@@ -15,7 +15,7 @@
 - [dalion619/mutator](https://github.com/dalion619/mutator) — Runs mutation testing to expose uncovered code and surviving mutants that tests fail to catch.
 - [unclebob/uml-viewer](https://github.com/unclebob/uml-viewer) — Visualizes components, coverage, CRAP, mutation scores, and dependency directions.
 
-All three cover Clojure, Java, C#, Go, TypeScript, Rust, and Python. The skill is written C# first: coverage comes from coverlet through `dotnet test`, complexity follows ReSharper's cyclomatic rules, and test projects are recognised by name (`*.Tests`, `*.UnitTests`, ...).
+All three cover Clojure, Java, C#, Go, TypeScript, Rust, and Python. The skill is written C# first: coverage comes from coverlet through `dotnet test` (or Microsoft.Testing.Platform's own coverage when `global.json` opts into it), complexity follows ReSharper's cyclomatic rules, and test projects are recognised by name (`*.Tests`, `*.UnitTests`, ...).
 
 ## Installation
 
@@ -32,11 +32,13 @@ git clone https://github.com/dalion619/mutator
 
 Set `UB_TOOLS` if you put them somewhere else. Each launcher builds its own `.venv` on first run.
 
-For C#, every test project needs `coverlet.collector`:
+For C# on VSTest (the default), every test project needs `coverlet.collector`:
 
 ```bash
 dotnet add tests/MyApp.Tests package coverlet.collector
 ```
+
+On Microsoft.Testing.Platform (`global.json` has `"test": {"runner": "Microsoft.Testing.Platform"}`), test projects need `Microsoft.Testing.Extensions.CodeCoverage` instead. `MSTest.Sdk` projects already include it.
 
 Then, from the folder with the `.sln`:
 

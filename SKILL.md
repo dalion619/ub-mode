@@ -121,16 +121,18 @@ Three tools gate every change. They write `.metrics/` at the project root, which
 ### C# Setup
 
 * Needs the .NET SDK on PATH. Check with `dotnet --list-sdks` before running anything.
-* Every test project needs `coverlet.collector`. Without it coverage is 0% and every CRAP score is a lie. `dotnet add <TestProject> package coverlet.collector`.
-* Name test projects `*.Tests`, `*.Test`, `*.UnitTests`, `*.IntegrationTests`, or `*.Specs`. Those are skipped as source. Anything else gets scored and mutated as production code.
+* Coverage comes from the test runner the solution uses. Without it coverage is 0% and every CRAP score is a lie.
+  * VSTest (the default): every test project needs `coverlet.collector`. `dotnet add <TestProject> package coverlet.collector`.
+  * Microsoft.Testing.Platform (`global.json` has `"test": {"runner": "Microsoft.Testing.Platform"}`): every test project needs `Microsoft.Testing.Extensions.CodeCoverage`. `MSTest.Sdk` projects already have it. Do not add coverlet.collector for this: it is a VSTest data collector, and `dotnet test` on Microsoft.Testing.Platform has no `--collect` to run it.
+* Keep test projects under a `test` / `tests` / `spec` / `specs` folder, or name them `*.Tests`, `*.Test`, `*.UnitTests`, `*.IntegrationTests`, or `*.Specs`. Those are skipped as source. Anything else gets scored and mutated as production code.
 * `*.g.cs` and `*.Designer.cs` are skipped. Do not hand-edit them to pass a gate.
-* Tag tests that must not run under mutation `[Trait("Category", "no-mutate")]`. mutator runs `dotnet test --filter Category!=no-mutate`.
+* Tag tests that must not run under mutation: xUnit/NUnit `[Trait("Category", "no-mutate")]`, MSTest `[TestCategory("no-mutate")]`. mutator runs `dotnet test --filter "Category!=no-mutate&TestCategory!=no-mutate"`.
 * `dotnet test` must pass before you start. A red baseline makes mutator exit `2` and write nothing.
 
 ## Crapper
 
 * Run `$UB_TOOLS/crapper/crapper --threshold 9.99`. Scope it with a path, a fragment, or `--changed`.
-* It runs `dotnet test --collect "XPlat Code Coverage"` and writes `target/coverage/csharp/lcov.info` plus `.metrics/crap.edn`.
+* It runs `dotnet test --collect "XPlat Code Coverage"` (VSTest) or `dotnet test --coverage --coverage-output-format cobertura` (Microsoft.Testing.Platform, read from `global.json`) and writes `target/coverage/csharp/lcov.info` plus `.metrics/crap.edn`.
 * Exit `2` means a function scored above 9.99, so it is not under 10. Reduce each one under 10 by splitting it, by testing it, or both.
 * C# complexity follows ReSharper: `if`, loops, `catch`, `when` filters, `?:`, each `case` (not `default`), each switch-expression arm (not `_`), `&&`, `||`, `??`, `?.`, and `and` / `or` patterns. A chain of `?.` is complexity. Parse once at the boundary instead.
 * Consider whether case statements are worth reducing. A flat switch over a closed enum that is fully tested is fine at CC 12; untested it is not.
