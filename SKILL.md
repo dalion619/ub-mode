@@ -3,7 +3,9 @@ name: ub-mode
 description: >
   Follow the reduced principles when writing or changing code. Every change
   follows First Make it Work, then Then Make it Right, then Follow Practice.
-  Use when the user runs /ub-mode or asks for the reduced principles.
+  Gates the result with crapper (CRAP < 10), dryer (similarity < 0.8), and
+  mutator (no survivors), C# first. Use when the user runs /ub-mode or asks
+  for the reduced principles.
 ---
 
 # ub-mode
@@ -105,22 +107,52 @@ Every time you are asked to make a change follow:
 * The test calls the code the way its user does and checks the result that user would see.
 * If the test would still pass when every function returned nothing, throw it out.
 
+## Quality Gates
+
+Three tools gate every change. They write `.metrics/` at the project root, which [uml-viewer](https://github.com/unclebob/uml-viewer) reads. Run them from the project root (the folder with the `.sln` / `.slnx` for C#), in this order: crapper, then dryer, then mutator.
+
+### Setup
+
+* The tools live side by side in `$UB_TOOLS`. If it is unset, `export UB_TOOLS="$HOME/.ub-mode/tools"`. mutator imports crapper from `../crapper`, so keep them siblings.
+* If a tool is missing, clone it: `git clone https://github.com/dalion619/crapper`, `.../dryer`, `.../mutator` into that folder.
+* Each launcher (`crapper/crapper`, `dryer/dryer`, `mutator/mutator`) builds its own `.venv` on first run. Needs `python3` and `git`.
+* Add `.metrics/` and `target/` to `.gitignore`.
+
+### C# Setup
+
+* Needs the .NET SDK on PATH. Check with `dotnet --list-sdks` before running anything.
+* Every test project needs `coverlet.collector`. Without it coverage is 0% and every CRAP score is a lie. `dotnet add <TestProject> package coverlet.collector`.
+* Name test projects `*.Tests`, `*.Test`, `*.UnitTests`, `*.IntegrationTests`, or `*.Specs`. Those are skipped as source. Anything else gets scored and mutated as production code.
+* `*.g.cs` and `*.Designer.cs` are skipped. Do not hand-edit them to pass a gate.
+* Tag tests that must not run under mutation `[Trait("Category", "no-mutate")]`. mutator runs `dotnet test --filter Category!=no-mutate`.
+* `dotnet test` must pass before you start. A red baseline makes mutator exit `2` and write nothing.
+
 ## Crapper
 
-* Use the crapper tool
-* Reduce each function under  CRAP 10 by splitting it, by testing it, or both.
-* Consider whether case statements are worth reducing.
+* Run `$UB_TOOLS/crapper/crapper --threshold 9.99`. Scope it with a path, a fragment, or `--changed`.
+* It runs `dotnet test --collect "XPlat Code Coverage"` and writes `target/coverage/csharp/lcov.info` plus `.metrics/crap.edn`.
+* Exit `2` means a function scored above 9.99, so it is not under 10. Reduce each one under 10 by splitting it, by testing it, or both.
+* C# complexity follows ReSharper: `if`, loops, `catch`, `when` filters, `?:`, each `case` (not `default`), each switch-expression arm (not `_`), `&&`, `||`, `??`, `?.`, and `and` / `or` patterns. A chain of `?.` is complexity. Parse once at the boundary instead.
+* Consider whether case statements are worth reducing. A flat switch over a closed enum that is fully tested is fine at CC 12; untested it is not.
+* Accessors are entries (`Total.get`). Lambdas and local functions count against their enclosing member.
 
 ## Dryer
 
-* Use the dryer tool to eliminate duplication that rank 0.8 or above.
+* Run `$UB_TOOLS/dryer/dryer --threshold 0.8`. Scope it with a path or `--changed`.
+* Eliminate every pair at 0.8 or above. Below `--min-lines 4` it does not report; that is fine.
+* In C# it compares methods, constructors, finalizers, operators, and accessors. Locals, literals, and field names normalize away. Two methods that differ only in names are the same method; extract it.
+* It skips test projects. Duplicated test setup is not a dryer finding.
 
 ## Mutator
 
-* Use the mutator tool
-* Cover the uncovered.
-* Kill the survivors.
-* Delete dead code.
+* Run crapper first, then `$UB_TOOLS/mutator/mutator --use-existing-coverage <file or folder>`. That reuses crapper's coverage instead of running the suite twice.
+* Start with the files you changed. The first full run executes every covered mutant and takes as long as the suite times the sites.
+* Exit `0` all killed. Exit `2` baseline failed. Exit `3` a mutant survived.
+* Cover the uncovered: an `UNCOVERED` line has no test. Write one through the public API.
+* Kill the survivors: a `SURVIVED` mutant (`>` to `>=`, `&&` to `||`, `?.` to `.`, `true` to `false`, `0` to `1`) means no test pins that decision. Add the boundary case.
+* Delete dead code: a survivor no honest test can kill is code nothing needs. Remove it.
+* Reruns are differential. Only survivors and changed members run again. `--mutate-all` forces everything.
+* Workers build into their own `target/dotnet-artifacts`. Use `--max-workers` if the machine runs out of memory.
 
 ## Refactoring
 
